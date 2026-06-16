@@ -2,7 +2,6 @@ import csv
 import json
 
 import httpx
-from httpx import Response
 from pydantic import BaseModel, ValidationError
 
 token = "e41ee64c1c4e326d207e0362ae20bb46d76bb969"
@@ -20,7 +19,6 @@ class ResponseIn(BaseModel):
 
 
 class ToCSVAdapter:
-    # TODO: валидировать что входящий код в рамках данного словаря
     verification_description_by_code = {
         0: "Корректное значение соответствует общепринятым правилам",
         2: "Пустое или заведомо «мусорное» значение",
@@ -28,7 +26,6 @@ class ToCSVAdapter:
         1: "Некорректное значение. Не соответствует общепринятым правилам",
         4: "Исправлены опечатки",
     }
-    # TODO: валидировать что входящий код в рамках данного словаря
     email_type = {
         "PERSONAL": "личный",  # (@mail.ru, @yandex.ru)
         "CORPORATE": "корпоративный",  # (@myshop.ru)
@@ -44,30 +41,22 @@ class ToCSVAdapter:
         if self._validate_field(field=response_data.qc, cls_field_name="verification_description_by_code"):
             setattr(self, "verification_description", self.verification_description_by_code[response_data.qc])
 
-    # TODO: валидировать что входящий код в рамках данного словаря
+
     def _validate_field(self, field, cls_field_name: str):
         if field not in getattr(self, cls_field_name):
             # TODO: динамически генерировать исключение связанное с ошибкой валидации конкретного поля
-            raise
+            # TODO: понять какой тип ошибки будет и убедиться, что мы ее обрабатываем
+            raise ValidationError
         else:
             return True
 
 
-def save_email_info_to_csv(email_info_data: ResponseIn):\
-    # TODO: преобразование должно быть вне функции сохранения
-    adapter = ToCSVAdapter(email_info_data)
-    data = vars(adapter)
+def save_email_info_to_csv(adapters):
     with open('email.csv', mode='w', encoding='utf-8', newline='') as file:
-        fieldnames = data.keys()
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer = csv.DictWriter(file, fieldnames=adapters[0].keys())
         writer.writeheader()
-        # TODO: сохранять в csv нужно список словарей а не один объект!!!
-        writer.writerows([data])
+        writer.writerows(adapters)
 
-
-def save_response(response: Response) -> None:
-    with open('response.json', 'w', encoding='utf-8') as file:
-        json.dump(response.json(), file)
 
 
 def sent_request(email_in: str) -> Response:
@@ -87,9 +76,6 @@ def sent_request(email_in: str) -> Response:
     except:
         raise
 
-def load_response():
-    with open('response.json', 'r', encoding='utf-8') as file:
-        return json.load(file)
 
 
 def main():
@@ -112,6 +98,5 @@ def main():
         pass
 
 
-# TODO: добавить обработку нескольких email адресов в соответствии с ограничениями API
 if __name__ == "__main__":
     main()
