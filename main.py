@@ -17,13 +17,22 @@ class ResponseIn(BaseModel):
     type: str
     qc: int
 
+class ToCSVAdapterError(Exception):
+    """Базовая ошибка трансформации адаптера."""
+
+    def __init__(self, field, possible_values):
+        self.field = field
+        self.values = ", ".join(map(str, possible_values.keys()))
+
+    def __str__(self):
+        return f"Поле {self.field} может содержать только значения: {self.values}"
 
 class ToCSVAdapter:
     verification_description_by_code = {
         0: "Корректное значение соответствует общепринятым правилам",
+        1: "Некорректное значение. Не соответствует общепринятым правилам",
         2: "Пустое или заведомо «мусорное» значение",
         3: "«Одноразовый» адрес. Домены 10minutemail.com, getairmail.com, temp-mail.ru и аналогичные",
-        1: "Некорректное значение. Не соответствует общепринятым правилам",
         4: "Исправлены опечатки",
     }
     email_type = {
@@ -41,15 +50,12 @@ class ToCSVAdapter:
         if self._validate_field(field=response_data.qc, cls_field_name="verification_description_by_code"):
             setattr(self, "verification_description", self.verification_description_by_code[response_data.qc])
 
-
     def _validate_field(self, field, cls_field_name: str):
-        if field not in getattr(self, cls_field_name):
-            # TODO: динамически генерировать исключение связанное с ошибкой валидации конкретного поля
-            # TODO: понять какой тип ошибки будет и убедиться, что мы ее обрабатываем
-            raise ValidationError
+        possible_values = getattr(self, cls_field_name)
+        if field not in possible_values:
+            raise ToCSVAdapterError(field, possible_values)
         else:
             return True
-
 
 def save_email_info_to_csv(adapters):
     with open('email.csv', mode='w', encoding='utf-8', newline='') as file:
@@ -60,6 +66,7 @@ def save_email_info_to_csv(adapters):
 
 
 def sent_request(email_in: str) -> Response:
+def send_request(email_in: list) -> httpx.Response | None:
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
