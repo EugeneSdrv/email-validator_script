@@ -1,5 +1,7 @@
 import csv
+from datetime import datetime, timezone
 import json
+import logging
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -18,14 +20,13 @@ class ResponseIn(BaseModel):
     qc: int
 
 class ToCSVAdapterError(Exception):
-    """Базовая ошибка трансформации адаптера."""
-
-    def __init__(self, field, possible_values):
+    def __init__(self, field, possible_values, value):
         self.field = field
+        self.value = value
         self.values = ", ".join(map(str, possible_values.keys()))
 
     def __str__(self):
-        return f"Поле {self.field} может содержать только значения: {self.values}"
+        return f"Поле '{self.field}' может содержать только значения: {self.values} \nполученное значение: {self.value}"
 
 class ToCSVAdapter:
     verification_description_by_code = {
@@ -53,7 +54,7 @@ class ToCSVAdapter:
     def _validate_field(self, field, cls_field_name: str):
         possible_values = getattr(self, cls_field_name)
         if field not in possible_values:
-            raise ToCSVAdapterError(field, possible_values)
+            raise ToCSVAdapterError(cls_field_name, possible_values, field)
         else:
             return True
 
@@ -65,7 +66,6 @@ def save_email_info_to_csv(adapters):
 
 
 
-def sent_request(email_in: str) -> Response:
 def send_request(email_in: list) -> httpx.Response | None:
     headers = {
         "Content-Type": "application/json",
@@ -84,25 +84,27 @@ def send_request(email_in: list) -> httpx.Response | None:
         raise
 
 
+def process_email_data_to_csv_record(raw_email_info):
+    logger = logging.getLogger(__name__)
+    try:
+        email_info_data: ResponseIn = ResponseIn.model_validate(raw_email_info)
+        return vars(ToCSVAdapter(email_info_data))
+    except (ValidationError, ToCSVAdapterError) as e:
+        logger.warning(
+            f"Ошибка валидации входящих данных {raw_email_info}: \n{e}",
+            extra={
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "raw_data": raw_email_info,
+                "validation_errors": e,
+            }
+        )
 
 def main():
-    raw_email_info_data = load_response()
-    # raw_email_info_data = sent_response(email)
-    # TODO: обрабатывать ошибки с неверным форматом входящих данных
-    try:
-        for raw_email_info in raw_email_info_data:
-            # TODO: возможно стоит выделить валидацию и обработку ошибок в отдельную функцию как в отправке запроса
-            email_info_data : ResponseIn = ResponseIn.model_validate(raw_email_info)
-            # TODO: сохранять в csv нужно список словарей а не один объект!!!
-            save_email_info_to_csv(email_info_data)
-            return email_info_data
-    except ValidationError:
-        # TODO: сохранить лог о том что не прошла обработка валидации, поэтому ... (либо - ретраи, либо - просто
-        #  продолжать и сохранять почту, как необработанную)
-        # raise  # не нужно райзить, а наоборот обрабатывать ошибку и продолжать выполнение программы
-        # возможно можно райзануть HttpException с 4хх кодом ,например, данную строку не удалось обработать.
-        # И сохранять логи, что данные по ней приходят невалидные (по структуре, что вряд ли может быть)
-        pass
+    response = send_request(email)
+    raw_email_info_data = response.json()
+    adapters_vars = [process_email_data_to_csv_record(raw_email_info) for raw_email_info in raw_email_info_data]
+    if adapters_vars[0]:
+        save_email_info_to_csv(adapters_vars)
 
 
 if __name__ == "__main__":
