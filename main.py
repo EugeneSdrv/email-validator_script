@@ -1,13 +1,13 @@
 import csv
 from datetime import datetime, timezone
-import json
+import time
 import logging
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
-token = "e41ee64c1c4e326d207e0362ae20bb46d76bb969"
-secret = "81cac1d4980ab5242094483cf15a7c6381891006"
+token = ""
+secret = ""
 email = ["serega@yandex/ru"]
 
 
@@ -64,25 +64,33 @@ def save_email_info_to_csv(adapters):
         writer.writeheader()
         writer.writerows(adapters)
 
-
-
 def send_request(email_in: list) -> httpx.Response | None:
+    max_retries = 3
+    base_delay = 1.0
+    status_forcelist = (429, 500, 502, 503, 504)
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
         "Authorization": f"Token {token}",
         "X-Secret": secret,
     }
-    # TODO: обработать ошибки недоступности API, возможно добавить ретраи
-    try:
-        return httpx.post(
-            url='https://cleaner.dadata.ru/api/v1/clean/email',
-            headers=headers,
-            json=email_in,
-        )
-    except:
-        raise
-
+    for attempt in range(max_retries + 1):
+        try:
+            response = httpx.post(
+                url='https://cleaner.dadata.ru/api/v1/clean/email',
+                headers=headers,
+                json=email_in,
+                timeout=10
+            )
+            if response.status_code in status_forcelist and attempt < max_retries:
+                delay = base_delay + (attempt * 0.5)
+                time.sleep(delay)
+                continue
+            return response
+        except (httpx.NetworkError, httpx.TimeoutException) as e:
+            if attempt == max_retries:
+                raise e
+    return None
 
 def process_email_data_to_csv_record(raw_email_info):
     logger = logging.getLogger(__name__)
@@ -105,7 +113,6 @@ def main():
     adapters_vars = [process_email_data_to_csv_record(raw_email_info) for raw_email_info in raw_email_info_data]
     if adapters_vars[0]:
         save_email_info_to_csv(adapters_vars)
-
 
 if __name__ == "__main__":
     main()
