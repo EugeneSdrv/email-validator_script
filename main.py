@@ -2,6 +2,7 @@ import csv
 from datetime import datetime, timezone
 import time
 import logging
+from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -9,7 +10,9 @@ from pydantic import BaseModel, ValidationError
 token = ""
 secret = ""
 email = ["serega@yandex/ru"]
+email: list[str] = ["serega@yandex/ru"]
 
+logger = logging.getLogger(__name__)
 
 class ResponseIn(BaseModel):
     source: str
@@ -59,7 +62,7 @@ class ToCSVAdapter:
             return True
 
 def save_email_info_to_csv(adapters):
-    with open('email.csv', mode='w', encoding='utf-8', newline='') as file:
+    with open('data/email_results.csv', mode='w', encoding='utf-8', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=adapters[0].keys())
         writer.writeheader()
         writer.writerows(adapters)
@@ -71,8 +74,8 @@ def send_request(email_in: list) -> httpx.Response | None:
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Authorization": f"Token {token}",
-        "X-Secret": secret,
+        "Authorization": f"Token {TOKEN}",
+        "X-Secret": SECRET,
     }
     for attempt in range(max_retries + 1):
         try:
@@ -93,7 +96,6 @@ def send_request(email_in: list) -> httpx.Response | None:
     return None
 
 def process_email_data_to_csv_record(raw_email_info):
-    logger = logging.getLogger(__name__)
     try:
         email_info_data: ResponseIn = ResponseIn.model_validate(raw_email_info)
         return vars(ToCSVAdapter(email_info_data))
@@ -110,8 +112,9 @@ def process_email_data_to_csv_record(raw_email_info):
 def main():
     response = send_request(email)
     raw_email_info_data = response.json()
-    adapters_vars = [process_email_data_to_csv_record(raw_email_info) for raw_email_info in raw_email_info_data]
-    if adapters_vars[0]:
+    adapters_vars = [process_email_data_to_csv_record(raw_email) for raw_email in raw_email_info_data if raw_email is not None]
+    if adapters_vars:
+        Path('data').mkdir(exist_ok=True)
         save_email_info_to_csv(adapters_vars)
 
 if __name__ == "__main__":
