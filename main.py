@@ -1,3 +1,4 @@
+import sys
 import csv
 from datetime import datetime, timezone
 import time
@@ -7,12 +8,17 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, ValidationError
 
-token = ""
-secret = ""
-email = ["serega@yandex/ru"]
+TOKEN: str = ""
+SECRET: str = ""
 email: list[str] = ["serega@yandex/ru"]
 
 logger = logging.getLogger(__name__)
+
+if len(sys.argv) > 1:
+    email = [sys.argv[1]]
+    logger.info(f"Получен email: {email}")
+else:
+    logger.error("Ошибка: укажите email как параметр")
 
 class ResponseIn(BaseModel):
     source: str
