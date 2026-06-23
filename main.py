@@ -7,9 +7,8 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, ValidationError
 
-token = ""
-secret = ""
-email = ["serega@yandex/ru"]
+TOKEN = ""
+SECRET = ""
 email: list[str] = ["serega@yandex/ru"]
 
 logger = logging.getLogger(__name__)
